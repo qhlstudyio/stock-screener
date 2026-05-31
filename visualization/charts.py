@@ -17,8 +17,6 @@ from data.db import get_stock_prices
 # Shared style constants
 # ---------------------------------------------------------------------------
 
-GRID_COLOR     = '#f0f0f0'
-BG_COLOR       = 'white'
 FONT_FAMILY    = 'Arial, sans-serif'
 PRIMARY_COLOR  = '#1f77b4'
 POSITIVE_COLOR = '#2ecc71'
@@ -44,17 +42,44 @@ COMPONENT_LABELS = {
 }
 
 
-def _base_layout(title):
-    """Return a shared layout dict applied to all figures."""
+# ---------------------------------------------------------------------------
+# Theme colors
+# ---------------------------------------------------------------------------
+
+def _colors(dark: bool) -> dict:
+    if dark:
+        return {
+            'bg':               '#0e1117',
+            'grid':             '#2d2d2d',
+            'font':             '#fafafa',
+            'gap':              '#2d2d2d',
+            'annotation_bg':    '#1e2d1e',
+            'annotation_border':'#555555',
+            'annotation_font':  '#cccccc',
+        }
+    else:
+        return {
+            'bg':               'white',
+            'grid':             '#f0f0f0',
+            'font':             '#222222',
+            'gap':              '#ecf0f1',
+            'annotation_bg':    '#fff9e6',
+            'annotation_border':'#95a5a6',
+            'annotation_font':  '#555555',
+        }
+
+
+def _base_layout(title: str, dark: bool = False) -> dict:
+    c = _colors(dark)
     return dict(
-        title=dict(text=title, font=dict(size=16, family=FONT_FAMILY)),
-        plot_bgcolor=BG_COLOR,
-        paper_bgcolor=BG_COLOR,
-        font=dict(family=FONT_FAMILY, size=13),
+        title=dict(text=title, font=dict(size=16, family=FONT_FAMILY, color=c['font'])),
+        plot_bgcolor=c['bg'],
+        paper_bgcolor=c['bg'],
+        font=dict(family=FONT_FAMILY, size=13, color=c['font']),
         margin=dict(l=60, r=40, t=60, b=60),
         hovermode='closest',
-        xaxis=dict(showgrid=True, gridcolor=GRID_COLOR, zeroline=False),
-        yaxis=dict(showgrid=True, gridcolor=GRID_COLOR, zeroline=False),
+        xaxis=dict(showgrid=True, gridcolor=c['grid'], zeroline=False, color=c['font']),
+        yaxis=dict(showgrid=True, gridcolor=c['grid'], zeroline=False, color=c['font']),
     )
 
 
@@ -62,17 +87,7 @@ def _base_layout(title):
 # Chart 1: Price history (line)
 # ---------------------------------------------------------------------------
 
-def plot_price_history(ticker, days=180):
-    """
-    Line chart showing closing price over the last N trading days.
-
-    Parameters
-    ----------
-    ticker : str
-    days   : int  number of recent rows to display (default 180)
-
-    Returns go.Figure or None if no data.
-    """
+def plot_price_history(ticker, days=180, dark_theme=False):
     prices = get_stock_prices(ticker)
     if prices is None or prices.empty:
         return None
@@ -106,7 +121,7 @@ def plot_price_history(ticker, days=180):
         hoverinfo='skip',
     ))
 
-    layout = _base_layout(f'{ticker} — Price History ({days} days)')
+    layout = _base_layout(f'{ticker} — Price History ({days} days)', dark=dark_theme)
     layout['yaxis']['tickprefix'] = '$'
     fig.update_layout(**layout)
 
@@ -127,18 +142,7 @@ METRIC_META = {
 }
 
 
-def plot_metrics_comparison(profiles, metric='gross_margin'):
-    """
-    Horizontal bar chart comparing one metric across all stocks.
-    Sorted descending (ascending for debt_ratio).
-
-    Parameters
-    ----------
-    profiles : list[dict]
-    metric   : str
-
-    Returns go.Figure or None.
-    """
+def plot_metrics_comparison(profiles, metric='gross_margin', dark_theme=False):
     rows = [
         {'ticker': p['ticker'], 'value': p.get(metric)}
         for p in profiles
@@ -154,6 +158,9 @@ def plot_metrics_comparison(profiles, metric='gross_margin'):
     meta   = METRIC_META.get(metric, {'label': metric, 'color': PRIMARY_COLOR})
     is_pct = metric not in ('pe_ratio', 'score', 'market_cap', 'eps')
 
+    c         = _colors(dark_theme)
+    text_color = c['font']
+
     text_vals = (
         [f'{v:.1%}' for v in df['value']] if is_pct
         else [f'{v:.1f}' for v in df['value']]
@@ -166,10 +173,11 @@ def plot_metrics_comparison(profiles, metric='gross_margin'):
         marker_color=meta['color'],
         text=text_vals,
         textposition='outside',
+        textfont=dict(color=text_color),
         hovertemplate='%{y}: %{text}<extra></extra>',
     ))
 
-    layout = _base_layout(f"{meta['label']} — All Stocks")
+    layout = _base_layout(f"{meta['label']} — All Stocks", dark=dark_theme)
     layout['xaxis']['tickformat'] = '.0%' if is_pct else '.1f'
     layout['yaxis']['title']      = ''
     layout['height']              = max(300, len(df) * 45)
@@ -182,22 +190,14 @@ def plot_metrics_comparison(profiles, metric='gross_margin'):
 # Chart 3: Score breakdown (stacked horizontal bar)
 # ---------------------------------------------------------------------------
 
-def plot_score_breakdown(profile):
-    """
-    Stacked horizontal bar showing score distribution across components.
-
-    Parameters
-    ----------
-    profile : dict
-
-    Returns go.Figure or None.
-    """
+def plot_score_breakdown(profile, dark_theme=False):
     breakdown = profile.get('score_breakdown')
     if not breakdown:
         return None
 
-    ticker = profile.get('ticker', '')
-    total  = profile.get('score', 0)
+    ticker    = profile.get('ticker', '')
+    total     = profile.get('score', 0)
+    gap_color = _colors(dark_theme)['gap']
 
     max_points = {
         'gross_margin': 15, 'profit_margin': 15, 'roe': 20,
@@ -228,12 +228,12 @@ def plot_score_breakdown(profile):
             x=[gap],
             y=[label],
             orientation='h',
-            marker_color='#ecf0f1',
+            marker_color=gap_color,
             showlegend=False,
             hovertemplate=f'Remaining: {gap:.1f} pts<extra></extra>',
         ))
 
-    layout = _base_layout(f'{ticker} — Score Breakdown  ({total:.1f} / 100)')
+    layout = _base_layout(f'{ticker} — Score Breakdown  ({total:.1f} / 100)', dark=dark_theme)
     layout['barmode']        = 'stack'
     layout['xaxis']['range'] = [0, 100]
     layout['xaxis']['title'] = 'Points'
@@ -249,23 +249,7 @@ def plot_score_breakdown(profile):
 # Chart 4: Valuation scatter (P/E vs ROE)
 # ---------------------------------------------------------------------------
 
-def plot_valuation_scatter(profiles, log_scale=False):
-    """
-    Scatter plot: P/E ratio (x) vs ROE (y).
-    Bubble size = market cap. Colour = composite score.
-
-    Outlier detection:
-      Stocks above the 90th P/E percentile are treated as outliers.
-      Linear view: pinned to right edge with annotation.
-      Log scale view: shown at true position on log axis.
-
-    Parameters
-    ----------
-    profiles  : list[dict]
-    log_scale : bool
-
-    Returns go.Figure or None.
-    """
+def plot_valuation_scatter(profiles, log_scale=False, dark_theme=False):
     rows = []
     for p in profiles:
         if None in (p.get('pe_ratio'), p.get('roe'), p.get('score')):
@@ -283,21 +267,23 @@ def plot_valuation_scatter(profiles, log_scale=False):
 
     df = pd.DataFrame(rows)
 
-    # --- Outlier detection ---
     pe_threshold  = df['pe_ratio'].quantile(0.90)
     df['outlier'] = df['pe_ratio'] > pe_threshold
 
     normal   = df[~df['outlier']].copy()
     outliers = df[df['outlier']].copy()
 
-    # Clamp extreme ROE for display
     normal['roe_display']   = normal['roe'].clip(-0.5, 2.0)
     outliers['roe_display'] = outliers['roe'].clip(-0.5, 2.0)
 
-    # Bubble size
     max_cap = df['market_cap'].max()
     normal['bubble_size']   = (normal['market_cap']   / max_cap * 50).clip(8, 50)
     outliers['bubble_size'] = (outliers['market_cap'] / max_cap * 50).clip(8, 50)
+
+    c                 = _colors(dark_theme)
+    annotation_bg     = c['annotation_bg']
+    annotation_border = c['annotation_border']
+    annotation_font   = c['annotation_font']
 
     def score_color(score):
         if score >= 60:   return POSITIVE_COLOR
@@ -306,7 +292,6 @@ def plot_valuation_scatter(profiles, log_scale=False):
 
     fig = go.Figure()
 
-    # --- Normal stocks ---
     for _, row in normal.iterrows():
         roe_label = f"{row['roe']:.1%}" if abs(row['roe']) < 5 else 'N/M'
         fig.add_trace(go.Scatter(
@@ -330,7 +315,6 @@ def plot_valuation_scatter(profiles, log_scale=False):
             ),
         ))
 
-    # --- Outlier stocks ---
     for _, row in outliers.iterrows():
         roe_label = f"{row['roe']:.1%}" if abs(row['roe']) < 5 else 'N/M'
         x_pos     = row['pe_ratio'] if log_scale else pe_threshold * 1.05
@@ -364,15 +348,14 @@ def plot_valuation_scatter(profiles, log_scale=False):
                 text=f"<b>{row['ticker']}</b> P/E={row['pe_ratio']:.0f} (outlier)",
                 showarrow=True,
                 arrowhead=2,
-                arrowcolor=NEUTRAL_COLOR,
+                arrowcolor=annotation_border,
                 ax=60, ay=-30,
-                font=dict(size=11, color='#555'),
-                bgcolor='#fff9e6',
-                bordercolor=NEUTRAL_COLOR,
+                font=dict(size=11, color=annotation_font),
+                bgcolor=annotation_bg,
+                bordercolor=annotation_border,
                 borderwidth=1,
             )
 
-    # --- Quadrant reference lines (based on normal stocks only) ---
     median_pe  = normal['pe_ratio'].median()
     median_roe = normal['roe_display'].median()
 
@@ -380,17 +363,16 @@ def plot_valuation_scatter(profiles, log_scale=False):
         y=median_roe,
         line_dash='dot', line_color=NEUTRAL_COLOR, opacity=0.5,
         annotation_text=f'Median ROE {median_roe:.1%}',
-        annotation_position='top left',        # ← fixed: moved inside chart
+        annotation_position='top left',
     )
     fig.add_vline(
         x=median_pe,
         line_dash='dot', line_color=NEUTRAL_COLOR, opacity=0.5,
         annotation_text=f'Median P/E {median_pe:.1f}',
-        annotation_position='top right',       # ← fixed: away from edge
+        annotation_position='top right',
     )
 
-    # --- Layout ---
-    layout = _base_layout('Valuation Map — P/E vs ROE')
+    layout = _base_layout('Valuation Map — P/E vs ROE', dark=dark_theme)
     layout['xaxis']['title']      = 'P/E Ratio (lower = cheaper)'
     layout['yaxis']['title']      = 'ROE (higher = better)'
     layout['yaxis']['tickformat'] = '.0%'
@@ -401,7 +383,7 @@ def plot_valuation_scatter(profiles, log_scale=False):
     if log_scale:
         layout['xaxis']['type']  = 'log'
         layout['xaxis']['title'] = 'P/E Ratio — log scale (lower = cheaper)'
-        layout['xaxis']['range'] = [1, 3]      # ← fixed: 10^1=10 to 10^3=1000
+        layout['xaxis']['range'] = [1, 3]
     else:
         layout['xaxis']['range'] = [0, pe_threshold * 1.25]
 

@@ -10,6 +10,7 @@ import pandas as pd
 import streamlit as st
 
 import config
+from data.updater import update_all
 from analysis.screener import screen_stocks, get_preset_groups
 from visualization.charts import (
     plot_price_history,
@@ -17,7 +18,6 @@ from visualization.charts import (
     plot_score_breakdown,
     plot_valuation_scatter,
 )
-from data.updater import update_all
 
 
 # ---------------------------------------------------------------------------
@@ -32,16 +32,28 @@ st.set_page_config(
 
 
 # ---------------------------------------------------------------------------
+# Theme detection
+# ---------------------------------------------------------------------------
+
+try:
+    current_theme = st.context.theme.get('type', 'dark')
+except Exception:
+    current_theme = 'dark'
+
+if 'theme' not in st.session_state:
+    st.session_state['theme'] = current_theme
+elif st.session_state['theme'] != current_theme:
+    st.session_state['theme'] = current_theme
+    st.rerun()
+
+is_dark = current_theme == 'dark'
+
+# ---------------------------------------------------------------------------
 # Cached data loader
 # ---------------------------------------------------------------------------
 
 @st.cache_data(ttl=3600)
 def load_data(tickers_key, sort_by, ascending, filters_key):
-    """
-    Cache wrapper around screen_stocks().
-    Parameters are hashable so Streamlit can cache the result.
-    ttl=3600 means the cache expires after 1 hour.
-    """
     tickers = list(tickers_key)
     filters = dict(filters_key) if filters_key else None
     return screen_stocks(
@@ -73,7 +85,6 @@ with st.sidebar:
         placeholder='e.g. NVDA, AMD',
     ).upper().strip()
 
-    # Build deduplicated ticker list
     selected_tickers = []
     for g in selected_groups:
         selected_tickers.extend(preset_groups.get(g, []))
@@ -131,10 +142,16 @@ with st.sidebar:
     st.divider()
 
     # --- Refresh ---
-    if st.button('🔄 Refresh Data', use_container_width=True):
+    if st.button('🔄 Refresh Data', use_container_width=True,
+                 disabled=st.session_state.get('refreshing', False)):
+        st.session_state['refreshing'] = True
+        st.rerun()
+
+    if st.session_state.get('refreshing', False):
         with st.spinner('Fetching data, please wait...'):
-            update_all(config.ALL_TICKERS)
+            update_all(force=True)
         st.cache_data.clear()
+        st.session_state['refreshing'] = False
         st.rerun()
 
 
@@ -196,7 +213,6 @@ tab_overview, tab_detail = st.tabs(['📊 Overview', '🔍 Stock Detail'])
 
 with tab_overview:
 
-    # Charts row
     col_left, col_right = st.columns(2)
 
     with col_left:
@@ -210,7 +226,11 @@ with tab_overview:
             'Score':         'score',
         }
         metric_choice = st.selectbox('Select metric', list(metric_map.keys()))
-        fig = plot_metrics_comparison(profiles, metric=metric_map[metric_choice])
+        fig = plot_metrics_comparison(
+            profiles,
+            metric=metric_map[metric_choice],
+            dark_theme=is_dark,
+        )
         if fig:
             st.plotly_chart(fig, use_container_width=True)
         else:
@@ -219,7 +239,11 @@ with tab_overview:
     with col_right:
         st.markdown('**Valuation Map — P/E vs ROE**')
         log_scale = st.toggle('Log scale (P/E axis)', value=False)
-        fig = plot_valuation_scatter(profiles, log_scale=log_scale)
+        fig = plot_valuation_scatter(
+            profiles,
+            log_scale=log_scale,
+            dark_theme=is_dark,
+        )
         if fig:
             st.plotly_chart(fig, use_container_width=True)
         else:
@@ -227,7 +251,6 @@ with tab_overview:
 
     st.divider()
 
-    # Stock table
     st.markdown('**All Stocks**')
 
     table_rows = []
@@ -279,10 +302,9 @@ with tab_detail:
             score = profile.get('score') or 0
             st.subheader(f"{selected}  ·  Score: {score:.1f} / 100")
 
-            # Price history
             st.markdown('#### Price History')
             days = st.slider('Days to show', 30, 365, 180, step=30)
-            fig  = plot_price_history(selected, days=days)
+            fig  = plot_price_history(selected, days=days, dark_theme=is_dark)
             if fig:
                 st.plotly_chart(fig, use_container_width=True)
             else:
@@ -292,7 +314,7 @@ with tab_detail:
 
             with col_a:
                 st.markdown('#### Score Breakdown')
-                fig = plot_score_breakdown(profile)
+                fig = plot_score_breakdown(profile, dark_theme=is_dark)
                 if fig:
                     st.plotly_chart(fig, use_container_width=True)
                 else:
