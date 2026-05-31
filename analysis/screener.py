@@ -157,16 +157,9 @@ def screen_stocks(tickers=None, filters=None, sort_by='score', ascending=False):
 def get_preset_groups():
     """
     Predefined stock groups for the UI multi-select.
-    The UI merges selected groups and deduplicates before calling screen_stocks().
-
-    Returns dict[str, list[str]]
+    Returns all GICS sector groups defined in config.STOCKS.
     """
-    return {
-        'Default List':   config.ALL_TICKERS,
-        'Tech Giants':    ['AAPL', 'MSFT', 'GOOGL', 'META', 'AMZN', 'NVDA'],
-        'Semiconductors': ['NVDA', 'AMD', 'INTC', 'QCOM', 'TSM'],
-        'Value Stocks':   ['BRK-B', 'JPM', 'JNJ', 'PG', 'KO'],
-    }
+    return config.STOCKS
 
 
 # ---------------------------------------------------------------------------

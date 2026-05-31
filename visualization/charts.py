@@ -180,6 +180,7 @@ def plot_metrics_comparison(profiles, metric='gross_margin', dark_theme=False):
     layout = _base_layout(f"{meta['label']} — All Stocks", dark=dark_theme)
     layout['xaxis']['tickformat'] = '.0%' if is_pct else '.1f'
     layout['yaxis']['title']      = ''
+    layout['yaxis']['autorange']  = 'reversed'
     layout['height']              = max(300, len(df) * 45)
     fig.update_layout(**layout)
 
