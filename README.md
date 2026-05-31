@@ -50,20 +50,22 @@ streamlit run app.py
 
 ## 项目结构
 
+```
 stock-screener/
 ├── data/
-│ ├── fetcher.py # 数据抓取
-│ ├── db.py # 数据库操作
-│ └── updater.py # 数据更新
+│   ├── fetcher.py      # 数据抓取
+│   ├── db.py           # 数据库操作
+│   └── updater.py      # 数据更新
 ├── analysis/
-│ ├── metrics.py # 财务指标计算
-│ ├── valuation.py # 估值模型
-│ └── screener.py # 筛选排名
+│   ├── metrics.py      # 财务指标计算
+│   ├── valuation.py    # 估值模型
+│   └── screener.py     # 筛选排名
 ├── visualization/
-│ └── charts.py # 图表生成
-├── app.py # 主应用
-├── config.py # 配置文件
-└── requirements.txt # 依赖清单
+│   └── charts.py       # 图表生成
+├── app.py              # 主应用
+├── config.py           # 配置文件
+└── requirements.txt    # 依赖清单
+```
 
 ---
 
