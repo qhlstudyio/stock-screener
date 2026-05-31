@@ -10,7 +10,7 @@ import pandas as pd
 import streamlit as st
 
 import config
-from data.updater import update_all
+from data.updater import update_all, update_ticker
 from analysis.screener import screen_stocks, get_preset_groups
 from visualization.charts import (
     plot_price_history,
@@ -150,6 +150,9 @@ with st.sidebar:
     if st.session_state.get('refreshing', False):
         with st.spinner('Fetching data, please wait...'):
             update_all(force=True)
+            for ticker in selected_tickers:
+                if ticker not in config.ALL_TICKERS:
+                    update_ticker(ticker, force=True)
         st.cache_data.clear()
         st.session_state['refreshing'] = False
         st.rerun()
