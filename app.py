@@ -18,7 +18,7 @@ from visualization.charts import (
     plot_score_breakdown,
     plot_valuation_scatter,
 )
-
+from data.db import create_tables
 
 # ---------------------------------------------------------------------------
 # Page config (must be first Streamlit call)
@@ -151,6 +151,7 @@ with st.sidebar:
 
     if st.session_state.get('refreshing', False):
         with st.spinner('Fetching data, please wait...'):
+            create_tables()
             for ticker in selected_tickers:
                 update_ticker(ticker, force=True)
         st.cache_data.clear()
