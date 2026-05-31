@@ -17,6 +17,7 @@ from visualization.charts import (
     plot_score_breakdown,
     plot_valuation_scatter,
 )
+from data.updater import update_all
 
 
 # ---------------------------------------------------------------------------
@@ -131,6 +132,8 @@ with st.sidebar:
 
     # --- Refresh ---
     if st.button('🔄 Refresh Data', use_container_width=True):
+        with st.spinner('Fetching data, please wait...'):
+            update_all(config.ALL_TICKERS)
         st.cache_data.clear()
         st.rerun()
 
