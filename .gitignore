@@ -4,3 +4,16 @@ __pycache__/
 *.pyc
 .env
 CONTEXT.md
+Stock_Screener.md
+
+# Frontend dependencies (do not commit)
+frontend/node_modules/
+
+# Frontend build output
+frontend/dist/
+
+# Python cache in subdirectories
+**/__pycache__/
+**/*.pyc
+
+node_modules/

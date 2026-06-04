@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Stock Screener</title>
+
+    <!-- Google Fonts: Figtree (UI) + IBM Plex Mono (numbers) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+
+    <!--
+      Prevent flash of wrong theme (FOUC).
+      This runs synchronously before React mounts, so the correct
+      data-theme attribute is set before the first paint.
+    -->
+    <script>
+      (function () {
+        var stored = localStorage.getItem('stock-screener-theme');
+        document.documentElement.setAttribute('data-theme', stored || 'dark');
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

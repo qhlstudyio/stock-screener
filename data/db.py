@@ -1,5 +1,5 @@
 # data/db.py
-# PostgreSQL persistence layer, replacing the original SQLite version.
+# PostgreSQL persistence layer.
 # All public function signatures are unchanged so upstream modules
 # (metrics, valuation, screener) require no modification.
 
@@ -34,13 +34,15 @@ def get_connection() -> psycopg2.extensions.connection:
 
 def create_tables() -> None:
     """
-    Create all required tables if they do not already exist.
+    Create all required tables if they do not already exist, then apply any
+    schema migrations needed for tables that already exist.
     Safe to run multiple times (idempotent).
     """
     conn   = get_connection()
     cursor = conn.cursor()
 
-    # Daily price history — includes SPY as market benchmark
+    # ── stock_prices ───────────────────────────────────────────────────────────
+    # Daily price history — includes SPY as market benchmark.
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS stock_prices (
             ticker  TEXT    NOT NULL,
@@ -54,44 +56,107 @@ def create_tables() -> None:
         )
     """)
 
-    # Latest financial snapshot — one row per ticker, updated each quarter
+    # ── financial_data ─────────────────────────────────────────────────────────
+    # Latest financial snapshot — one row per ticker, updated each quarter.
+    # Only raw data from yfinance is stored here.
+    # Derived ratios (P/S, P/B, ROA, ROIC, D/E, margins, etc.) are calculated
+    # at runtime in the analysis layer and are never stored.
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS financial_data (
             ticker                  TEXT        NOT NULL,
+
+            -- Identity
+            company_name            TEXT,
+            exchange                TEXT,
             sector                  TEXT,
             industry                TEXT,
+
+            -- Share data
+            shares_outstanding      REAL,
+
+            -- Market pricing
             market_cap              REAL,
+            enterprise_value        REAL,
+            ev_ebitda               REAL,
+            ev_revenue              REAL,
             pe_ratio                REAL,
             forward_pe              REAL,
             eps                     REAL,
             forward_eps             REAL,
+
+            -- Income statement
             revenue                 REAL,
             net_income              REAL,
             gross_profit            REAL,
             operating_income        REAL,
+            research_development    REAL,
+            interest_expense        REAL,
+
+            -- Balance sheet
             total_assets            REAL,
             total_debt              REAL,
             shareholders_equity     REAL,
+            current_assets          REAL,
+            current_liabilities     REAL,
+            cash_and_equivalents    REAL,
+
+            -- Cash flow
             free_cash_flow          REAL,
             capital_expenditures    REAL,
-            research_development    REAL,
-            interest_expense        REAL,
-            full_time_employees     INTEGER,
+
+            -- Dividends
             dividend_yield          REAL,
+            dividend_rate           REAL,
             payout_ratio            REAL,
+
+            -- Risk
             beta                    REAL,
+
+            -- Workforce
+            full_time_employees     INTEGER,
+
+            -- Analyst consensus
             target_mean_price       REAL,
+            target_high_price       REAL,
+            target_low_price        REAL,
             analyst_count           INTEGER,
             recommendation_key      TEXT,
+
+            -- Timestamps
             fetched_at              TIMESTAMP,
             updated_at              TIMESTAMP,
+
             PRIMARY KEY (ticker)
         )
     """)
 
-    # Multi-period financial history — unlocks trend analysis
-    # period format: '2024Q4', '2024Q3', '2023', etc.
-    # period_type:   'quarterly' | 'annual'
+    # ── Migration: add new columns to existing financial_data table ────────────
+    # ADD COLUMN IF NOT EXISTS is idempotent — safe to run on every startup.
+    # Applies only to environments where the table was created before these
+    # columns were introduced. Fresh installs already have them via CREATE TABLE.
+    new_columns = [
+        ("company_name",         "TEXT"),
+        ("exchange",             "TEXT"),
+        ("shares_outstanding",   "REAL"),
+        ("enterprise_value",     "REAL"),
+        ("ev_ebitda",            "REAL"),
+        ("ev_revenue",           "REAL"),
+        ("current_assets",       "REAL"),
+        ("current_liabilities",  "REAL"),
+        ("cash_and_equivalents", "REAL"),
+        ("dividend_rate",        "REAL"),
+        ("target_high_price",    "REAL"),
+        ("target_low_price",     "REAL"),
+    ]
+    for col_name, col_type in new_columns:
+        cursor.execute(
+            f"ALTER TABLE financial_data ADD COLUMN IF NOT EXISTS {col_name} {col_type}"
+        )
+
+    # ── financial_history ──────────────────────────────────────────────────────
+    # Multi-period financial history — unlocks trend and growth analysis.
+    # period format : '2024Q4', '2024Q3', '2023', '2022', etc.
+    # period_type   : 'quarterly' | 'annual'
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS financial_history (
             ticker                  TEXT    NOT NULL,
@@ -110,7 +175,9 @@ def create_tables() -> None:
         )
     """)
 
-    # S&P 500 constituent tracking — removed_date is NULL while still a member
+    # ── sp500_membership ───────────────────────────────────────────────────────
+    # S&P 500 constituent tracking.
+    # removed_date is NULL while the ticker is still a current member.
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS sp500_membership (
             ticker          TEXT    NOT NULL,
@@ -120,10 +187,11 @@ def create_tables() -> None:
         )
     """)
 
+    # ── ai_analysis ────────────────────────────────────────────────────────────
     # AI analysis results — schema reserved, not yet implemented.
-    # API endpoints return null for ai_analysis until the AI layer is built.
+    # All API endpoints return null for ai_analysis until the AI layer is built.
     # prompt_version enables targeted re-runs when the prompt changes.
-    # data_hash detects whether financials have changed since last analysis.
+    # data_hash detects whether financials have changed since the last analysis.
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS ai_analysis (
             ticker              TEXT    NOT NULL,
@@ -196,8 +264,11 @@ def save_stock_prices(ticker: str, df: pd.DataFrame) -> int:
 
 def save_financial_data(data: dict) -> bool:
     """
-    Insert or update financial data for one ticker.
+    Insert or update the financial snapshot for one ticker.
     Uses ON CONFLICT DO UPDATE so re-running always stores the latest values.
+
+    The caller (fetcher.py) is responsible for populating all fields.
+    Fields absent from the dict default to None / NULL.
 
     Returns True on success, False on failure.
     """
@@ -210,59 +281,91 @@ def save_financial_data(data: dict) -> bool:
     try:
         cursor.execute("""
             INSERT INTO financial_data (
-                ticker, sector, industry,
-                market_cap, pe_ratio, forward_pe, eps, forward_eps,
+                ticker,
+                company_name, exchange, sector, industry,
+                shares_outstanding,
+                market_cap, enterprise_value, ev_ebitda, ev_revenue,
+                pe_ratio, forward_pe, eps, forward_eps,
                 revenue, net_income, gross_profit, operating_income,
+                research_development, interest_expense,
                 total_assets, total_debt, shareholders_equity,
-                free_cash_flow, capital_expenditures, research_development,
-                interest_expense, full_time_employees,
-                dividend_yield, payout_ratio, beta,
-                target_mean_price, analyst_count, recommendation_key,
+                current_assets, current_liabilities, cash_and_equivalents,
+                free_cash_flow, capital_expenditures,
+                dividend_yield, dividend_rate, payout_ratio,
+                beta,
+                full_time_employees,
+                target_mean_price, target_high_price, target_low_price,
+                analyst_count, recommendation_key,
                 fetched_at, updated_at
             ) VALUES (
-                %s, %s, %s,
-                %s, %s, %s, %s, %s,
+                %s,
                 %s, %s, %s, %s,
+                %s,
+                %s, %s, %s, %s,
+                %s, %s, %s, %s,
+                %s, %s, %s, %s,
+                %s, %s,
                 %s, %s, %s,
                 %s, %s, %s,
                 %s, %s,
                 %s, %s, %s,
+                %s,
+                %s,
                 %s, %s, %s,
+                %s, %s,
                 %s, %s
             )
             ON CONFLICT (ticker) DO UPDATE SET
-                sector                = EXCLUDED.sector,
-                industry              = EXCLUDED.industry,
-                market_cap            = EXCLUDED.market_cap,
-                pe_ratio              = EXCLUDED.pe_ratio,
-                forward_pe            = EXCLUDED.forward_pe,
-                eps                   = EXCLUDED.eps,
-                forward_eps           = EXCLUDED.forward_eps,
-                revenue               = EXCLUDED.revenue,
-                net_income            = EXCLUDED.net_income,
-                gross_profit          = EXCLUDED.gross_profit,
-                operating_income      = EXCLUDED.operating_income,
-                total_assets          = EXCLUDED.total_assets,
-                total_debt            = EXCLUDED.total_debt,
-                shareholders_equity   = EXCLUDED.shareholders_equity,
-                free_cash_flow        = EXCLUDED.free_cash_flow,
-                capital_expenditures  = EXCLUDED.capital_expenditures,
-                research_development  = EXCLUDED.research_development,
-                interest_expense      = EXCLUDED.interest_expense,
-                full_time_employees   = EXCLUDED.full_time_employees,
-                dividend_yield        = EXCLUDED.dividend_yield,
-                payout_ratio          = EXCLUDED.payout_ratio,
-                beta                  = EXCLUDED.beta,
-                target_mean_price     = EXCLUDED.target_mean_price,
-                analyst_count         = EXCLUDED.analyst_count,
-                recommendation_key    = EXCLUDED.recommendation_key,
-                fetched_at            = EXCLUDED.fetched_at,
-                updated_at            = EXCLUDED.updated_at
+                company_name            = EXCLUDED.company_name,
+                exchange                = EXCLUDED.exchange,
+                sector                  = EXCLUDED.sector,
+                industry                = EXCLUDED.industry,
+                shares_outstanding      = EXCLUDED.shares_outstanding,
+                market_cap              = EXCLUDED.market_cap,
+                enterprise_value        = EXCLUDED.enterprise_value,
+                ev_ebitda               = EXCLUDED.ev_ebitda,
+                ev_revenue              = EXCLUDED.ev_revenue,
+                pe_ratio                = EXCLUDED.pe_ratio,
+                forward_pe              = EXCLUDED.forward_pe,
+                eps                     = EXCLUDED.eps,
+                forward_eps             = EXCLUDED.forward_eps,
+                revenue                 = EXCLUDED.revenue,
+                net_income              = EXCLUDED.net_income,
+                gross_profit            = EXCLUDED.gross_profit,
+                operating_income        = EXCLUDED.operating_income,
+                research_development    = EXCLUDED.research_development,
+                interest_expense        = EXCLUDED.interest_expense,
+                total_assets            = EXCLUDED.total_assets,
+                total_debt              = EXCLUDED.total_debt,
+                shareholders_equity     = EXCLUDED.shareholders_equity,
+                current_assets          = EXCLUDED.current_assets,
+                current_liabilities     = EXCLUDED.current_liabilities,
+                cash_and_equivalents    = EXCLUDED.cash_and_equivalents,
+                free_cash_flow          = EXCLUDED.free_cash_flow,
+                capital_expenditures    = EXCLUDED.capital_expenditures,
+                dividend_yield          = EXCLUDED.dividend_yield,
+                dividend_rate           = EXCLUDED.dividend_rate,
+                payout_ratio            = EXCLUDED.payout_ratio,
+                beta                    = EXCLUDED.beta,
+                full_time_employees     = EXCLUDED.full_time_employees,
+                target_mean_price       = EXCLUDED.target_mean_price,
+                target_high_price       = EXCLUDED.target_high_price,
+                target_low_price        = EXCLUDED.target_low_price,
+                analyst_count           = EXCLUDED.analyst_count,
+                recommendation_key      = EXCLUDED.recommendation_key,
+                fetched_at              = EXCLUDED.fetched_at,
+                updated_at              = EXCLUDED.updated_at
         """, (
             data.get("ticker"),
+            data.get("company_name"),
+            data.get("exchange"),
             data.get("sector"),
             data.get("industry"),
+            data.get("shares_outstanding"),
             data.get("market_cap"),
+            data.get("enterprise_value"),
+            data.get("ev_ebitda"),
+            data.get("ev_revenue"),
             data.get("pe_ratio"),
             data.get("forward_pe"),
             data.get("eps"),
@@ -271,18 +374,24 @@ def save_financial_data(data: dict) -> bool:
             data.get("net_income"),
             data.get("gross_profit"),
             data.get("operating_income"),
+            data.get("research_development"),
+            data.get("interest_expense"),
             data.get("total_assets"),
             data.get("total_debt"),
             data.get("shareholders_equity"),
+            data.get("current_assets"),
+            data.get("current_liabilities"),
+            data.get("cash_and_equivalents"),
             data.get("free_cash_flow"),
             data.get("capital_expenditures"),
-            data.get("research_development"),
-            data.get("interest_expense"),
-            data.get("full_time_employees"),
             data.get("dividend_yield"),
+            data.get("dividend_rate"),
             data.get("payout_ratio"),
             data.get("beta"),
+            data.get("full_time_employees"),
             data.get("target_mean_price"),
+            data.get("target_high_price"),
+            data.get("target_low_price"),
             data.get("analyst_count"),
             data.get("recommendation_key"),
             data.get("fetched_at"),
@@ -359,24 +468,28 @@ def get_stock_prices(ticker: str) -> pd.DataFrame | None:
     Retrieve the full price history for a ticker, sorted by date ascending.
     Columns: date, open, high, low, close, volume.
     Returns None if no data is found.
+
+    Uses cursor-based fetch instead of pd.read_sql_query to avoid the pandas
+    UserWarning about non-SQLAlchemy DBAPI2 connections.
     """
-    conn = get_connection()
+    conn   = get_connection()
+    cursor = conn.cursor()
 
     try:
-        df = pd.read_sql_query(
+        cursor.execute(
             """
             SELECT date, open, high, low, close, volume
             FROM stock_prices
             WHERE ticker = %s
             ORDER BY date ASC
             """,
-            conn,
-            params=(ticker,),
+            (ticker,),
         )
-
-        if df.empty:
+        rows = cursor.fetchall()
+        if not rows:
             return None
 
+        df = pd.DataFrame(rows, columns=["date", "open", "high", "low", "close", "volume"])
         df["date"] = pd.to_datetime(df["date"])
         return df
 
@@ -417,14 +530,17 @@ def get_all_financial_data() -> pd.DataFrame | None:
     Retrieve the latest financial snapshot for every ticker.
     Returns a DataFrame sorted by ticker, or None if the table is empty.
     """
-    conn = get_connection()
+    conn   = get_connection()
+    cursor = conn.cursor()
 
     try:
-        df = pd.read_sql_query(
-            "SELECT * FROM financial_data ORDER BY ticker ASC",
-            conn,
-        )
-        return df if not df.empty else None
+        cursor.execute("SELECT * FROM financial_data ORDER BY ticker ASC")
+        rows = cursor.fetchall()
+        if not rows:
+            return None
+
+        columns = [desc[0] for desc in cursor.description]
+        return pd.DataFrame(rows, columns=columns)
 
     except Exception as e:
         print(f"[db] Error reading all financial data: {e}")
@@ -448,19 +564,24 @@ def get_financial_history(
 
     Returns a DataFrame sorted by period ascending, or None if no data exists.
     """
-    conn = get_connection()
+    conn   = get_connection()
+    cursor = conn.cursor()
 
     try:
-        df = pd.read_sql_query(
+        cursor.execute(
             """
             SELECT * FROM financial_history
             WHERE ticker = %s AND period_type = %s
             ORDER BY period ASC
             """,
-            conn,
-            params=(ticker, period_type),
+            (ticker, period_type),
         )
-        return df if not df.empty else None
+        rows = cursor.fetchall()
+        if not rows:
+            return None
+
+        columns = [desc[0] for desc in cursor.description]
+        return pd.DataFrame(rows, columns=columns)
 
     except Exception as e:
         print(f"[db] Error reading financial history for {ticker}: {e}")
@@ -535,7 +656,7 @@ def test_connection() -> bool:
 
 if __name__ == "__main__":
     print("=" * 55)
-    print("db.py — connection test")
+    print("db.py — connection test + schema migration")
     print("=" * 55)
 
     if test_connection():
