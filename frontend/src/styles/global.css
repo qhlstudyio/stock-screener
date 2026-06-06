@@ -759,7 +759,9 @@ body {
 }
 
 .detail-page {
-  padding-bottom: 80px;   /* room to scroll past the last section */
+  max-width: 1280px;        /* comfortable 2-column layout width */
+  margin: 0 auto;           /* center on wide screens */
+  padding-bottom: 80px;
 }
 
 .detail-section {
@@ -1297,4 +1299,189 @@ body {
 .spy-description strong {
   color: var(--text1);
   font-weight: 600;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Chart redesign — MetricTooltip · ProfitWaterfall · ScoreDonut
+                    ValuationRuler · ReturnBars · RiskRadar
+═══════════════════════════════════════════════════════════════════════════════ */
+
+/* ── MetricTooltip ──────────────────────────────────────────────────────────── */
+.metric-tooltip-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  cursor: help;
+}
+
+.metric-tooltip-icon {
+  font-size: 10px;
+  opacity: 0.4;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.metric-tooltip-box {
+  position: absolute;
+  bottom: calc(100% + 5px);
+  left: 0;
+  z-index: 200;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 8px 11px;
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--text1);
+  width: 210px;
+  white-space: normal;
+  pointer-events: none;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+}
+
+/* ── Profit Waterfall ───────────────────────────────────────────────────────── */
+.waterfall {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.waterfall-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.waterfall-label {
+  flex: 0 0 130px;
+  font-size: 12px;
+  color: var(--text2);
+}
+
+.waterfall-track {
+  flex: 1;
+  height: 8px;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.waterfall-bar {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.5s ease;
+}
+
+.waterfall-pct {
+  flex: 0 0 44px;
+  text-align: right;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.waterfall-abs {
+  flex: 0 0 56px;
+  text-align: right;
+  font-size: 11px;
+  color: var(--text2);
+}
+
+/* ── Score Donut ────────────────────────────────────────────────────────────── */
+.score-donut-inner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.score-donut-center-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  pointer-events: none;
+}
+
+.score-donut-number {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--accent);
+  line-height: 1;
+}
+
+.score-donut-label {
+  font-size: 10px;
+  color: var(--text2);
+  margin-top: 2px;
+}
+
+.score-donut-legend {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.score-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.score-legend-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.score-legend-name {
+  font-size: 11px;
+  color: var(--text2);
+  flex: 1;
+}
+
+.score-legend-val {
+  font-size: 11px;
+  color: var(--text1);
+}
+
+/* ── Valuation Ruler ────────────────────────────────────────────────────────── */
+.valuation-ruler {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.ruler-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.ruler-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  color: var(--text2);
+}
+
+.ruler-legend-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+/* ── Card sub-label (one-liner below card title) ─────────────────────────────  */
+.card-sub-inline {
+  font-size: 11px;
+  color: var(--text2);
+  margin-bottom: 14px;
 }
