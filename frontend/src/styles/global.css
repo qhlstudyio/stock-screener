@@ -1485,3 +1485,211 @@ body {
   color: var(--text2);
   margin-bottom: 14px;
 }
+
+/* ── Price Hero ──────────────────────────────────────────────────────────────── */
+.price-hero {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-top: 18px;
+  flex-wrap: wrap;
+}
+
+.price-hero-value {
+  font-size: 34px;
+  font-weight: 700;
+  color: var(--text1);
+  line-height: 1;
+}
+
+.price-hero-change {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.price-hero-label {
+  font-size: 12px;
+  color: var(--text2);
+}
+
+/* ── 52-Week Range Bar ────────────────────────────────────────────────────────── */
+.w52 {
+  margin-top: 16px;
+  max-width: 400px;
+}
+
+.w52-track {
+  position: relative;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  margin-bottom: 6px;
+}
+
+.w52-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  opacity: 0.45;
+}
+
+.w52-thumb {
+  position: absolute;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  background: var(--accent);
+  border: 2px solid var(--bg);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.w52-labels {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: var(--text2);
+}
+
+.w52-center-label {
+  font-size: 10px;
+  color: var(--text2);
+  opacity: 0.55;
+  letter-spacing: 0.03em;
+}
+
+/* ── Analyst Target Bar ───────────────────────────────────────────────────────── */
+.atb {
+  margin-bottom: 4px;
+}
+
+.atb-track {
+  position: relative;
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  margin-bottom: 7px;
+}
+
+.atb-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+  opacity: 0.35;
+}
+
+.atb-pin {
+  position: absolute;
+  top: 50%;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.atb-pin--cur {
+  background: var(--accent);
+  border: 2px solid var(--bg);
+  z-index: 2;
+}
+
+.atb-pin--mean {
+  background: var(--bg);
+  border: 2px solid var(--warning);
+  z-index: 1;
+}
+
+.atb-edges {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text1);
+  margin-bottom: 14px;
+}
+
+.atb-edge-lbl { color: var(--text2); }
+
+.atb-stats {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.atb-stat {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.atb-stat-pip {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.atb-stat-pip--cur  { background: var(--accent); }
+.atb-stat-pip--mean { border: 2px solid var(--warning); background: transparent; }
+
+.atb-stat-key    { color: var(--text2); }
+.atb-stat-val    { font-weight: 600; }
+.atb-stat-upside { font-weight: 600; margin-left: 2px; }
+
+/* ── Raw Data Groups ──────────────────────────────────────────────────────────── */
+.raw-groups {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 28px;
+  margin-bottom: 12px;
+}
+
+.raw-group {
+  margin-bottom: 20px;
+}
+
+.raw-group-header {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text2);
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 2px;
+}
+
+@media (max-width: 900px) {
+  .raw-groups { grid-template-columns: 1fr; }
+}
+
+/* ── Shared chart legend ──────────────────────────────────────────────────────── */
+.chart-legend-row {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  padding-top: 8px;
+  font-size: 11px;
+}
+
+.chart-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.chart-legend-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}

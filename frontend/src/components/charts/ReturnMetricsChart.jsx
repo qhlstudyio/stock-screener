@@ -73,11 +73,18 @@ export default function ReturnMetricsChart({ stock, sectorStats }) {
           <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(56,189,248,0.05)' }} />
           {hasSector && (
             <Legend
-              wrapperStyle={{ fontSize: 11, paddingTop: 8 }}
-              formatter={name => (
-                <span style={{ color: name === 'Stock' ? COLORS.sky : COLORS.violet }}>
-                  {name === 'Stock' ? stock.ticker : stock.sector ?? 'Sector'}
-                </span>
+              content={() => (
+                <div className="chart-legend-row">
+                  {[
+                    { label: stock.ticker,           color: COLORS.sky    + 'cc' },
+                    { label: stock.sector ?? 'Sector', color: COLORS.violet + 'cc' },
+                  ].map(({ label, color }) => (
+                    <span key={label} className="chart-legend-item">
+                      <span className="chart-legend-swatch" style={{ background: color }} />
+                      <span style={{ color }}>{label}</span>
+                    </span>
+                  ))}
+                </div>
               )}
             />
           )}

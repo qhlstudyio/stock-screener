@@ -2,17 +2,18 @@
 // Individual stock dashboard — chart-led redesign.
 //
 // Section order (matches navigation.js sectionIds):
-//   overview     company header · KPI cards · edge-case alerts · price chart
-//   valuation    score donut · valuation ruler · DCF scenarios
+//   overview     company header · price hero · 52W bar · KPI cards · alerts · price chart
+//   valuation    score donut · valuation ruler · DCF scenarios · graham · multiples
 //   financials   profit waterfall · return metrics vs sector · health metrics
 //   risk         returns vs SPY bars · risk radar · risk stat rows
-//   analyst      analyst consensus
-//   raw-data     raw financial statement numbers
+//   analyst      price target bar · consensus details
+//   raw-data     raw financial statement numbers (grouped by category)
 
 import { useState, useEffect }    from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 
 import { getStock, getSectors }   from '../api/stocks.js'
+import { usePriceMetrics }        from '../hooks/usePriceMetrics.js'
 import { fmtPct, fmtX, fmtCap, fmtScore, fmtDecimal } from '../utils/formatters.js'
 
 import Card        from '../components/common/Card.jsx'
@@ -42,6 +43,54 @@ function SectionTitle({ children }) {
 }
 
 
+// ── Price Hero ─────────────────────────────────────────────────────────────────
+
+function PriceHero({ stock, metrics }) {
+  const price  = stock.current_price
+  const change = metrics?.dailyChange
+  const pct    = metrics?.dailyChangePct
+  const isPos  = change == null ? null : change >= 0
+
+  return (
+    <div className="price-hero">
+      <span className="price-hero-value num">
+        {price != null ? `$${price}` : '—'}
+      </span>
+      {change != null ? (
+        <span className={`price-hero-change num ${isPos ? 'text-positive' : 'text-negative'}`}>
+          {isPos ? '▲' : '▼'}&nbsp;
+          {isPos ? '+' : ''}{change.toFixed(2)}&ensp;
+          ({isPos ? '+' : ''}{(pct * 100).toFixed(2)}%)
+        </span>
+      ) : (
+        price != null && <span className="price-hero-label">Most recent close</span>
+      )}
+    </div>
+  )
+}
+
+
+// ── 52-Week Range Bar ──────────────────────────────────────────────────────────
+
+function Week52Bar({ low, high, current }) {
+  if (!low || !high || !current) return null
+  const pct = Math.max(0, Math.min(100, ((current - low) / (high - low)) * 100))
+  return (
+    <div className="w52">
+      <div className="w52-track">
+        <div className="w52-fill"  style={{ width: `${pct}%` }} />
+        <div className="w52-thumb" style={{ left:  `${pct}%` }} />
+      </div>
+      <div className="w52-labels">
+        <span className="num">${low.toFixed(2)}</span>
+        <span className="w52-center-label">52-Week Range</span>
+        <span className="num">${high.toFixed(2)}</span>
+      </div>
+    </div>
+  )
+}
+
+
 // ── Overview Section ───────────────────────────────────────────────────────────
 
 function KpiCard({ label, value, sub, signal }) {
@@ -55,10 +104,10 @@ function KpiCard({ label, value, sub, signal }) {
   )
 }
 
-function OverviewSection({ stock }) {
+function OverviewSection({ stock, metrics }) {
   return (
     <>
-      {/* Company identity */}
+      {/* Company identity + price */}
       <div className="company-header">
         <div className="company-header-left">
           <h1 className="company-name">{stock.company_name ?? stock.ticker}</h1>
@@ -68,7 +117,15 @@ function OverviewSection({ stock }) {
             {stock.sector   && <><span className="meta-dot">·</span><span>{stock.sector}</span></>}
           </div>
           {stock.industry && <div className="company-industry">{stock.industry}</div>}
+
+          <PriceHero stock={stock} metrics={metrics} />
+          <Week52Bar
+            low={metrics?.week52Low}
+            high={metrics?.week52High}
+            current={stock.current_price}
+          />
         </div>
+
         <div className="company-header-right">
           <span className="headline-score num">{fmtScore(stock.score)}</span>
           <span className="headline-score-label">Score / 100</span>
@@ -130,10 +187,18 @@ function OverviewSection({ stock }) {
 
 // ── Valuation Section ──────────────────────────────────────────────────────────
 
-const DCF_LABELS = { bear: '📉 Bear', base: '📊 Base', bull: '📈 Bull' }
+const DCF_SCENARIO_COLOR = { bear: 'var(--negative)', base: 'var(--text2)', bull: 'var(--positive)' }
+const DCF_LABELS         = { bear: 'Bear',            base: 'Base',         bull: 'Bull'            }
 
 function ValuationSection({ stock }) {
   const dcf = stock.dcf_scenarios
+
+  // Frontend-computed multiples
+  const ps            = stock.market_cap && stock.revenue
+                          ? stock.market_cap / stock.revenue : null
+  const pb            = stock.current_price && stock.book_value_per_share
+                          ? stock.current_price / stock.book_value_per_share : null
+  const earningsYield = stock.pe_ratio ? (1 / stock.pe_ratio) * 100 : null
 
   return (
     <>
@@ -174,7 +239,9 @@ function ValuationSection({ stock }) {
                   if (!s) return null
                   return (
                     <tr key={k}>
-                      <td>{DCF_LABELS[k]}</td>
+                      <td style={{ color: DCF_SCENARIO_COLOR[k], fontWeight: 600 }}>
+                        {DCF_LABELS[k]}
+                      </td>
                       <td className="num">{p(s.growth_rate, 0)}</td>
                       <td className="num">${s.intrinsic_value?.toFixed(2)}</td>
                       <td className={`num ${signCls(s.margin_of_safety)}`}>
@@ -194,26 +261,45 @@ function ValuationSection({ stock }) {
         </Card>
       )}
 
-      {/* Graham Number */}
-      <Card title="Graham Number">
-        <div className="graham-grid">
-          {[
-            ['Graham Number',    stock.graham_number        != null ? `$${stock.graham_number.toFixed(2)}`       : null],
-            ['Current Price',    stock.current_price        != null ? `$${stock.current_price}`                  : null],
-            ['Margin to Graham', stock.margin_to_graham     != null ? p(stock.margin_to_graham, 1)               : null],
-            ['Book Value/Share', stock.book_value_per_share != null ? `$${stock.book_value_per_share.toFixed(2)}` : null],
-          ].map(([label, val]) => (
-            <div key={label} className="graham-item">
-              <span className="graham-label">{label}</span>
-              <span className="graham-value num">{val ?? '—'}</span>
-            </div>
-          ))}
-        </div>
-        {stock.graham_signal && <div style={{ marginTop: 12 }}><Badge signal={stock.graham_signal} /></div>}
-        <p className="card-note">
-          √(22.5 × EPS × Book Value/Share). Requires positive EPS and book value.
-        </p>
-      </Card>
+      {/* Graham + Valuation Multiples */}
+      <div className="card-grid-2">
+        <Card title="Graham Number">
+          <div className="graham-grid">
+            {[
+              ['Graham Number',    stock.graham_number        != null ? `$${stock.graham_number.toFixed(2)}`        : null],
+              ['Current Price',    stock.current_price        != null ? `$${stock.current_price}`                   : null],
+              ['Margin to Graham', stock.margin_to_graham     != null ? p(stock.margin_to_graham, 1)                : null],
+              ['Book Value/Share', stock.book_value_per_share != null ? `$${stock.book_value_per_share.toFixed(2)}` : null],
+            ].map(([label, val]) => (
+              <div key={label} className="graham-item">
+                <span className="graham-label">{label}</span>
+                <span className="graham-value num">{val ?? '—'}</span>
+              </div>
+            ))}
+          </div>
+          {stock.graham_signal && <div style={{ marginTop: 12 }}><Badge signal={stock.graham_signal} /></div>}
+          <p className="card-note">
+            √(22.5 × EPS × Book Value/Share). Requires positive EPS and book value.
+          </p>
+        </Card>
+
+        <Card title="Valuation Multiples">
+          <MetricRow label="Price / Sales (P/S)"
+            value={ps != null ? `${ps.toFixed(2)}x` : '—'} />
+          <MetricRow label="Price / Book (P/B)"
+            value={pb != null ? `${pb.toFixed(2)}x` : '—'} />
+          <MetricRow label="Earnings Yield"
+            value={earningsYield != null ? `${earningsYield.toFixed(2)}%` : '—'} />
+          <MetricRow label="EV / Revenue"
+            value={stock.ev_revenue != null ? `${fmtDecimal(stock.ev_revenue, 1)}x` : '—'} />
+          <MetricRow label="Forward P/E"
+            value={stock.forward_pe != null ? fmtX(stock.forward_pe) : '—'} />
+          <p className="card-note" style={{ marginTop: 12 }}>
+            P/S and P/B derived from market cap, revenue, and book value.
+            Earnings yield = 1 / trailing P/E.
+          </p>
+        </Card>
+      </div>
     </>
   )
 }
@@ -224,7 +310,6 @@ function ValuationSection({ stock }) {
 function FinancialsSection({ stock, sectorStats }) {
   return (
     <>
-      {/* Profit waterfall — full width */}
       <Card title="Profit Waterfall">
         <p className="card-sub-inline">
           How much of each revenue dollar survives each cost layer — hover for definitions
@@ -232,21 +317,20 @@ function FinancialsSection({ stock, sectorStats }) {
         <ProfitWaterfall stock={stock} />
       </Card>
 
-      {/* Return metrics + Health metrics side-by-side */}
       <div className="card-grid-2">
         <Card title="Return on Capital">
           <ReturnMetricsChart stock={stock} sectorStats={sectorStats} />
         </Card>
 
         <Card title="Leverage & Efficiency">
-          <MetricRow label="Debt / Assets"     value={p(stock.debt_ratio)} />
-          <MetricRow label="Debt / Equity"     value={stock.d_e_ratio      != null ? fmtX(stock.d_e_ratio, 2)             : '—'} />
-          <MetricRow label="Interest Coverage" value={stock.interest_coverage != null ? fmtX(stock.interest_coverage, 1)   : '—'} />
-          <MetricRow label="Current Ratio"     value={stock.current_ratio   != null ? fmtDecimal(stock.current_ratio, 2) + 'x' : '—'} />
-          <MetricRow label="FCF Conversion"   value={stock.fcf_conversion   != null ? fmtDecimal(stock.fcf_conversion, 2) + 'x' : '—'} />
-          <MetricRow label="R&D / Revenue"     value={p(stock.rd_ratio)} />
-          <MetricRow label="CapEx / Revenue"   value={p(stock.capex_ratio)} />
-          <MetricRow label="Revenue / Employee" value={fmtCap(stock.revenue_per_employee)} />
+          <MetricRow label="Debt / Assets"      value={p(stock.debt_ratio)} />
+          <MetricRow label="Debt / Equity"       value={stock.d_e_ratio        != null ? fmtX(stock.d_e_ratio, 2)              : '—'} />
+          <MetricRow label="Interest Coverage"   value={stock.interest_coverage != null ? fmtX(stock.interest_coverage, 1)      : '—'} />
+          <MetricRow label="Current Ratio"       value={stock.current_ratio     != null ? fmtDecimal(stock.current_ratio, 2) + 'x' : '—'} />
+          <MetricRow label="FCF Conversion"      value={stock.fcf_conversion    != null ? fmtDecimal(stock.fcf_conversion, 2) + 'x' : '—'} />
+          <MetricRow label="R&D / Revenue"       value={p(stock.rd_ratio)} />
+          <MetricRow label="CapEx / Revenue"     value={p(stock.capex_ratio)} />
+          <MetricRow label="Revenue / Employee"  value={fmtCap(stock.revenue_per_employee)} />
         </Card>
       </div>
     </>
@@ -259,7 +343,6 @@ function FinancialsSection({ stock, sectorStats }) {
 function RiskSection({ stock }) {
   return (
     <>
-      {/* Returns bars + Radar side-by-side */}
       <div className="card-grid-2">
         <Card title="Price Returns vs SPY">
           <ReturnBars stock={stock} />
@@ -270,7 +353,6 @@ function RiskSection({ stock }) {
         </Card>
       </div>
 
-      {/* Exact risk numbers */}
       <Card title="Risk Statistics">
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 32 }}>
           <div>
@@ -280,9 +362,9 @@ function RiskSection({ stock }) {
             <MetricRow label="Volatility (ann.)" value={p(stock.volatility)} />
           </div>
           <div>
-            <MetricRow label="Sharpe Ratio"  value={fmtDecimal(stock.sharpe, 2)} />
-            <MetricRow label="Alpha (ann.)"  value={p(stock.alpha)} />
-            <MetricRow label="Max Drawdown"  value={p(stock.max_drawdown)} />
+            <MetricRow label="Sharpe Ratio" value={fmtDecimal(stock.sharpe, 2)} />
+            <MetricRow label="Alpha (ann.)" value={p(stock.alpha)} />
+            <MetricRow label="Max Drawdown" value={p(stock.max_drawdown)} />
           </div>
         </div>
       </Card>
@@ -293,24 +375,70 @@ function RiskSection({ stock }) {
 
 // ── Analyst Section ────────────────────────────────────────────────────────────
 
+function AnalystTargetBar({ stock }) {
+  const {
+    target_low_price:  low,
+    target_high_price: high,
+    target_mean_price: mean,
+    current_price:     current,
+  } = stock
+
+  if (!low || !high) return null
+
+  const range   = high - low
+  const clamp   = v => Math.max(2, Math.min(98, v))
+  const curPct  = current != null ? clamp((current - low) / range * 100) : null
+  const meanPct = mean    != null ? clamp((mean    - low) / range * 100) : null
+  const upside  = mean != null && current != null ? (mean / current - 1) : null
+
+  return (
+    <div className="atb">
+      <div className="atb-track">
+        {curPct  != null && <div className="atb-fill"             style={{ width: `${curPct}%` }} />}
+        {curPct  != null && <div className="atb-pin atb-pin--cur" style={{ left:  `${curPct}%` }} />}
+        {meanPct != null && <div className="atb-pin atb-pin--mean" style={{ left: `${meanPct}%` }} />}
+      </div>
+      <div className="atb-edges">
+        <span><span className="num">${low.toFixed(0)}</span><span className="atb-edge-lbl"> Low</span></span>
+        <span><span className="atb-edge-lbl">High </span><span className="num">${high.toFixed(0)}</span></span>
+      </div>
+      <div className="atb-stats">
+        <div className="atb-stat">
+          <div className="atb-stat-pip atb-stat-pip--cur" />
+          <span className="atb-stat-key">Current</span>
+          <span className="num atb-stat-val">{current != null ? `$${current}` : '—'}</span>
+        </div>
+        <div className="atb-stat">
+          <div className="atb-stat-pip atb-stat-pip--mean" />
+          <span className="atb-stat-key">Mean Target</span>
+          <span className="num atb-stat-val">{mean != null ? `$${mean.toFixed(2)}` : '—'}</span>
+          {upside != null && (
+            <span className={`num atb-stat-upside ${upside >= 0 ? 'text-positive' : 'text-negative'}`}>
+              {upside >= 0 ? '+' : ''}{(upside * 100).toFixed(1)}%
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const REC_MAP = {
   strong_buy: 'Strong Buy', buy: 'Buy', hold: 'Hold',
   sell: 'Sell', strong_sell: 'Strong Sell', underperform: 'Underperform',
 }
 
 function AnalystSection({ stock }) {
-  const upside = stock.target_mean_price && stock.current_price
-    ? (stock.target_mean_price / stock.current_price - 1) : null
-
   return (
     <Card title="Analyst Consensus">
-      <MetricRow label="Mean Target"    value={stock.target_mean_price != null ? `$${stock.target_mean_price.toFixed(2)}` : '—'} />
-      <MetricRow label="High Target"    value={stock.target_high_price != null ? `$${stock.target_high_price.toFixed(2)}` : '—'} />
-      <MetricRow label="Low Target"     value={stock.target_low_price  != null ? `$${stock.target_low_price.toFixed(2)}`  : '—'} />
-      <MetricRow label="Current Price"  value={stock.current_price     != null ? `$${stock.current_price}`                : '—'} />
-      <MetricRow label="Implied Upside" value={<span className={signCls(upside)}>{p(upside)}</span>} />
-      <MetricRow label="Coverage"       value={stock.analyst_count != null ? `${stock.analyst_count} analysts` : '—'} />
-      <MetricRow label="Recommendation" value={REC_MAP[stock.recommendation_key] ?? stock.recommendation_key ?? '—'} />
+      <AnalystTargetBar stock={stock} />
+      <div style={{ marginTop: 20 }}>
+        <MetricRow label="Coverage"       value={stock.analyst_count != null ? `${stock.analyst_count} analysts` : '—'} />
+        <MetricRow label="Recommendation" value={REC_MAP[stock.recommendation_key] ?? stock.recommendation_key ?? '—'} />
+        <MetricRow label="High Target"    value={stock.target_high_price != null ? `$${stock.target_high_price.toFixed(2)}` : '—'} />
+        <MetricRow label="Mean Target"    value={stock.target_mean_price != null ? `$${stock.target_mean_price.toFixed(2)}` : '—'} />
+        <MetricRow label="Low Target"     value={stock.target_low_price  != null ? `$${stock.target_low_price.toFixed(2)}`  : '—'} />
+      </div>
       <p className="card-note">Consensus reflects current analyst coverage; refreshed quarterly.</p>
     </Card>
   )
@@ -319,28 +447,54 @@ function AnalystSection({ stock }) {
 
 // ── Raw Data Section ───────────────────────────────────────────────────────────
 
-const RAW_FIELDS = [
-  ['Revenue',              'revenue',             'cap'],
-  ['Net Income',           'net_income',           'cap'],
-  ['Gross Profit',         'gross_profit',         'cap'],
-  ['Operating Income',     'operating_income',     'cap'],
-  ['Free Cash Flow',       'free_cash_flow',       'cap'],
-  ['Total Assets',         'total_assets',         'cap'],
-  ['Total Debt',           'total_debt',           'cap'],
-  ["Shareholders' Equity", 'shareholders_equity',  'cap'],
-  ['Current Assets',       'current_assets',       'cap'],
-  ['Current Liabilities',  'current_liabilities',  'cap'],
-  ['R&D Expense',          'research_development', 'cap'],
-  ['Capital Expenditures', 'capital_expenditures', 'cap'],
-  ['EPS (trailing)',       'eps',                  'usd'],
-  ['EPS (forward)',        'forward_eps',          'usd'],
-  ['Shares Outstanding',   'shares_outstanding',   'cap'],
-  ['Enterprise Value',     'enterprise_value',     'cap'],
-  ['EV / EBITDA',          'ev_ebitda',            'x1'],
-  ['Forward P/E',          'forward_pe',           'x1'],
-  ['Dividend Yield',       'dividend_yield',       'direct_pct'],
-  ['Dividend Rate',        'dividend_rate',        'usd'],
-  ['Payout Ratio',         'payout_ratio',         'pct'],
+const RAW_GROUPS = [
+  {
+    label: 'Income Statement',
+    fields: [
+      ['Revenue',              'revenue',              'cap'],
+      ['Gross Profit',         'gross_profit',         'cap'],
+      ['Operating Income',     'operating_income',     'cap'],
+      ['Net Income',           'net_income',           'cap'],
+      ['Free Cash Flow',       'free_cash_flow',       'cap'],
+      ['R&D Expense',          'research_development', 'cap'],
+      ['Capital Expenditures', 'capital_expenditures', 'cap'],
+    ],
+  },
+  {
+    label: 'Balance Sheet',
+    fields: [
+      ['Total Assets',          'total_assets',        'cap'],
+      ['Total Debt',            'total_debt',           'cap'],
+      ["Shareholders' Equity",  'shareholders_equity', 'cap'],
+      ['Current Assets',        'current_assets',      'cap'],
+      ['Current Liabilities',   'current_liabilities', 'cap'],
+    ],
+  },
+  {
+    label: 'Per Share',
+    fields: [
+      ['EPS (trailing)',     'eps',                'usd'],
+      ['EPS (forward)',      'forward_eps',        'usd'],
+      ['Shares Outstanding', 'shares_outstanding', 'cap'],
+    ],
+  },
+  {
+    label: 'Enterprise Value & Multiples',
+    fields: [
+      ['Enterprise Value', 'enterprise_value', 'cap'],
+      ['EV / EBITDA',      'ev_ebitda',        'x1'],
+      ['EV / Revenue',     'ev_revenue',       'x1'],
+      ['Forward P/E',      'forward_pe',       'x1'],
+    ],
+  },
+  {
+    label: 'Dividends',
+    fields: [
+      ['Dividend Yield', 'dividend_yield', 'direct_pct'],
+      ['Dividend Rate',  'dividend_rate',  'usd'],
+      ['Payout Ratio',   'payout_ratio',   'pct'],
+    ],
+  },
 ]
 
 function rawFmt(v, fmt) {
@@ -358,17 +512,22 @@ function rawFmt(v, fmt) {
 function RawDataSection({ stock }) {
   return (
     <Card title="Raw Financial Data">
-      <div className="table-wrap">
-        <table className="data-table data-table--raw">
-          <tbody>
-            {RAW_FIELDS.map(([label, key, fmt]) => (
-              <tr key={key}>
-                <td className="raw-label">{label}</td>
-                <td className="raw-value num">{rawFmt(stock[key], fmt)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="raw-groups">
+        {RAW_GROUPS.map(group => (
+          <div key={group.label} className="raw-group">
+            <div className="raw-group-header">{group.label}</div>
+            <table className="data-table data-table--raw">
+              <tbody>
+                {group.fields.map(([label, key, fmt]) => (
+                  <tr key={key}>
+                    <td className="raw-label">{label}</td>
+                    <td className="raw-value num">{rawFmt(stock[key], fmt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ))}
       </div>
       <p className="card-note">
         Source: yfinance · Most recent annual filing.
@@ -407,11 +566,13 @@ function ErrorState({ error, ticker }) {
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 export default function StockDetailPage() {
-  const { ticker }                  = useParams()
-  const [stock,       setStock]     = useState(null)
+  const { ticker }                    = useParams()
+  const [stock,       setStock]       = useState(null)
   const [sectorStats, setSectorStats] = useState(null)
-  const [loading,     setLoading]   = useState(true)
-  const [error,       setError]     = useState(null)
+  const [loading,     setLoading]     = useState(true)
+  const [error,       setError]       = useState(null)
+
+  const metrics = usePriceMetrics(ticker)
 
   useEffect(() => {
     setLoading(true)
@@ -424,14 +585,13 @@ export default function StockDetailPage() {
         setStock(data)
         setLoading(false)
 
-        // Fetch sector stats in background for return-metrics comparison
         if (data.sector) {
           getSectors()
             .then(sectors => {
               const s = sectors.find(sec => sec.sector === data.sector)
               setSectorStats(s ?? null)
             })
-            .catch(() => {})  // sector comparison is optional; silently skip
+            .catch(() => {})
         }
       })
       .catch(err => { setError(err.message); setLoading(false) })
@@ -445,7 +605,7 @@ export default function StockDetailPage() {
     <div className="detail-page">
 
       <section id="overview" className="detail-section detail-section--first">
-        <OverviewSection stock={stock} />
+        <OverviewSection stock={stock} metrics={metrics} />
       </section>
 
       <section id="valuation" className="detail-section">
